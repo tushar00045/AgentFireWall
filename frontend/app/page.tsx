@@ -1,3 +1,4 @@
+"use client";
 import Image from "next/image";
 
 // export default function Home() {
@@ -64,25 +65,63 @@ import Image from "next/image";
 //   );
 // }
 
-export default async function Home() {
-  const data = await getHealth();
+
+import { useState } from "react";
+
+export default function Home() {
+
+  const [prompt, setPrompt] = useState("");
+  const [response, setResponse] = useState("");
+
+  async function sendPrompt() {
+
+    const res = await fetch("http://127.0.0.1:8000/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+    const data = await res.json();
+
+    setResponse(data.response);
+  }
 
   return (
     <main className="p-10">
-      <h1 className="text-4xl font-bold mb-5">
+
+      <h1 className="text-4xl font-bold mb-6">
         Agent Firewall Dashboard
       </h1>
 
-      <div className="p-5 border rounded-lg">
-        <p className="text-xl">
-          Backend Status: {data.status}
-        </p>
+      <textarea
+        className="border p-3 w-full h-40 rounded-lg"
+        placeholder="Enter prompt..."
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+      />
+
+      <button
+        onClick={sendPrompt}
+        className="mt-4 bg-black text-white px-5 py-2 rounded-lg"
+      >
+        Send Prompt
+      </button>
+
+      <div className="mt-8 border p-5 rounded-lg">
+        <h2 className="text-2xl font-bold mb-3">
+          AI Response
+        </h2>
+
+        <p>{response}</p>
       </div>
+
     </main>
   );
 }
 
-async function getHealth() {
-  const res = await fetch("http://127.0.0.1:8000/health")
-  return res.json();
-}
+// async function getHealth() {
+//   const res = await fetch("http://127.0.0.1:8000/health")
+//   return res.json();
+// }
