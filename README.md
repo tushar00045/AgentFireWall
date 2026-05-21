@@ -14,4 +14,4 @@ Runtime security layer for autonomous AI agents.
 - FastAPI
 - Next.js
 - LangGraph
-- OpenAI API
+- Gemini API
