@@ -73,6 +73,7 @@ export default function Home() {
   const [response, setResponse] = useState("");
   const [firewallData, setFirewallData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<any[]>([]);
 
   async function sendPrompt() {
 
@@ -91,6 +92,16 @@ export default function Home() {
       const data = await res.json();
 
       setFirewallData(data.firewall);
+
+      const newLog = {
+        timestamp: new Date().toLocaleTimeString(),
+        promt: prompt,
+        decision: data.firewall.decision,
+        risk_score: data.firewall.risk_score,
+        threat_type: data.firewall.llm_analysis?.threat_type || "None"
+      };
+
+      setLogs((prev) => [newLog, ...prev]);
 
       if (data.blocked) {
         setResponse(data.message);
@@ -360,6 +371,12 @@ export default function Home() {
               Safe Prompt
             </button>
 
+            <button
+              onClick={() => setLogs([])}
+              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg"
+            >
+              Clear Logs
+            </button>
           </div>
 
           {/* SEND BUTTON */}
@@ -464,7 +481,7 @@ export default function Home() {
                           key={index}
                           className="bg-red-900/30 border border-red-700 px-4 py-3 rounded-xl"
                         >
-                          🚨 {threat}
+                           {threat}
                         </div>
 
                       )
@@ -513,6 +530,180 @@ export default function Home() {
           </div>
 
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+            <p className="text-zinc-400 mb-2">
+              Total Requests
+            </p>
+
+            <h2 className="text-4xl font-bold">
+              {logs.length}
+            </h2>
+
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+            <p className="text-zinc-400 mb-2">
+              Blocked Attacks
+            </p>
+
+            <h2 className="text-4xl font-bold text-red-500">
+
+              {
+                logs.filter(
+                  (log) => log.decision === "BLOCK"
+                ).length
+              }
+
+            </h2>
+
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+            <p className="text-zinc-400 mb-2">
+              Safe Requests
+            </p>
+
+            <h2 className="text-4xl font-bold text-green-500">
+
+              {
+                logs.filter(
+                  (log) => log.decision === "ALLOW"
+                ).length
+              }
+
+            </h2>
+
+          </div>
+
+        </div>
+
+        <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+          <div className="flex justify-between items-center mb-6">
+
+            <h2 className="text-3xl font-bold">
+              Live Threat Feed
+            </h2>
+
+            <div className="text-red-400 font-semibold">
+              Monitoring Active
+            </div>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {logs.length > 0 ? (
+
+              logs.map((log, index) => (
+
+                <div
+                  key={index}
+                  className="bg-black border border-zinc-700 rounded-xl p-5"
+                >
+
+                  <div className="flex justify-between items-center mb-3">
+
+                    <div
+                      className={`font-bold ${
+                        log.decision === "BLOCK"
+                          ? "text-red-500"
+                          : log.decision === "WARNING"
+                          ? "text-yellow-400"
+                          : "text-green-500"
+                      }`}
+                    >
+                      {log.decision}
+                    </div>
+
+                    <div className="text-zinc-500 text-sm">
+                      {log.timestamp}
+                    </div>
+
+                  </div>
+
+                  <p className="text-zinc-300 mb-3">
+                    {log.prompt}
+                  </p>
+
+                  <div className="flex flex-wrap gap-3">
+
+                    <div className="bg-zinc-800 px-3 py-1 rounded-lg text-sm">
+                      Risk: {log.risk_score}
+                    </div>
+
+                    <div className="bg-orange-900/30 border border-orange-700 px-3 py-1 rounded-lg text-sm text-orange-400">
+                      {log.threat_type}
+                    </div>
+
+                  </div>
+
+                </div>
+
+              ))
+
+            ) : (
+
+              <div className="text-zinc-500">
+                No threats detected yet.
+              </div>
+
+            )}
+
+          </div>
+
+        </div>
+
+        <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+        <h2 className="text-3xl font-bold mb-6">
+          Activity Timeline
+        </h2>
+
+        <div className="space-y-4">
+
+          {logs.map((log, index) => (
+
+            <div
+              key={index}
+              className="flex items-start gap-4"
+            >
+
+              <div
+                className={`w-4 h-4 rounded-full mt-2 ${
+                  log.decision === "BLOCK"
+                    ? "bg-red-500"
+                    : log.decision === "WARNING"
+                    ? "bg-yellow-400"
+                    : "bg-green-500"
+                }`}
+              />
+
+              <div>
+
+                <p className="font-semibold">
+                  {log.decision} - {log.threat_type}
+                </p>
+
+                <p className="text-zinc-500 text-sm">
+                  {log.timestamp}
+                </p>
+
+              </div>
+
+            </div>
+
+          ))}
+
+        </div>
+
+       </div>
 
       </div>
 
