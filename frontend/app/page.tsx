@@ -65,7 +65,7 @@ import Image from "next/image";
 //   );
 // }
 
-import { useState } from "react";
+import {useEffect , useState } from "react";
 
 export default function Home() {
 
@@ -77,8 +77,23 @@ export default function Home() {
   const [toolResult, setToolResult] = useState<any>(null);
   const [toolLogs, setToolLogs] = useState<any[]>([]);
 
-  async function sendPrompt() {
+  const [searchTerm, setSearchTerm] = useState("");
 
+  const [filterType, setFilterType] =
+    useState("ALL");
+
+  useEffect(() => {
+    loadLogs();
+    loadRuntimeLogs();
+
+    const interval = setInterval(() => {
+      loadLogs();
+      loadRuntimeLogs();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+  
+  async function sendPrompt() {
     setLoading(true);
 
     try {
@@ -96,16 +111,17 @@ export default function Home() {
       setFirewallData(data.firewall);
       setToolResult(data.tool_result);
 
+      /*
       if (data.tool_result) {
+        
         const newToolLog = {
           timestamp: new Date().toLocaleTimeString(),
           tool: data.tool_result.tool,
           status: data.tool_result.status,
           message: data.tool_result.message
-        };
-        setToolLogs((prev) => [newToolLog, ...prev]);
+        }; 
       }
-
+     
       const newLog = {
         timestamp: new Date().toLocaleTimeString(),
         promt: prompt,
@@ -113,24 +129,62 @@ export default function Home() {
         risk_score: data.firewall.risk_score,
         threat_type: data.firewall.llm_analysis?.threat_type || "None"
       };
-
-      setLogs((prev) => [newLog, ...prev]);
-
+     */
+      
       if (data.blocked) {
         setResponse(data.message);
       } else {
         setResponse(data.response);
       }
 
+      await loadLogs();
+      await loadRuntimeLogs();
+
     } catch (error) {
-
       console.error(error);
-
       setResponse("Failed to connect to backend.");
-
     }
-
     setLoading(false);
+  }
+
+  async function loadLogs() {
+    setLogs([]);
+  try {
+    const res = await fetch(
+      "http://127.0.0.1:8000/security-logs"
+    );
+
+    const data = await res.json();
+    const formattedLogs = data.logs.map((log: any) => ({
+      timestamp: new Date(log.timestamp).toLocaleString(),
+      prompt: log.prompt,
+      decision: log.decision,
+      risk_score: log.risk_score,
+      threat_type: log.threat_type
+    }));
+    setLogs(formattedLogs);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function loadRuntimeLogs() {
+    setToolLogs([]);
+  try {
+    const res = await fetch(
+      "http://127.0.0.1:8000/runtime-logs"
+    );
+    const data = await res.json();
+    const formattedLogs = data.logs.map((log: any) => ({
+      timestamp: new Date(log.timestamp).toLocaleString(),
+      tool: log.tool_name,
+      status: log.status,
+      message: log.message
+    }));
+    setToolLogs(formattedLogs);
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   function setAttackPrompt(type: string) {
@@ -252,6 +306,180 @@ export default function Home() {
     }
   }
 
+  function getSeverityColor(risk: number) {
+    if (risk >= 80) {
+      return "text-red-500";
+    }
+
+    if (risk >= 50) {
+      return "text-yellow-400";
+    }
+    return "text-green-500";
+  }
+
+  function calculateTrustScore() {
+    if (logs.length === 0) {
+      return 100;
+    }
+    const blocked = logs.filter(
+      (log) => log.decision === "BLOCK"
+    ).length;
+    const warning = logs.filter(
+      (log) => log.decision === "WARNING"
+    ).length;
+    const attackWeight = blocked * 15 + warning * 7;
+
+    const score = Math.max(
+      0,
+      100 - attackWeight
+    );
+
+    return score;
+  }
+
+  function getSecurityPosture(score: number) {
+    if (score >= 80) {
+      return {
+        label: "TRUSTED",
+        color: "text-green-500",
+      };
+    }
+
+    if (score >= 50) {
+      return {
+        label: "SUSPICIOUS",
+        color: "text-yellow-400",
+      };
+    }
+
+    return {
+      label: "HIGH RISK",
+      color: "text-red-500",
+    };
+  }
+
+  const trustScore = calculateTrustScore();
+  const posture = getSecurityPosture(trustScore);
+
+  const filteredLogs = logs.filter((log) => {
+
+   const matchesSearch =
+      log.prompt
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase());
+
+   const matchesFilter =
+    filterType === "ALL"
+    ? true
+    : (() => {
+
+        console.log(
+          log.decision,
+          filterType
+        );
+
+        return (
+          log.decision
+            ?.trim()
+            .toUpperCase() ===
+          filterType
+            .trim()
+            .toUpperCase()
+        );
+      })();
+
+    return matchesSearch && matchesFilter;
+  });
+
+  const threatStats = {
+    promptInjection: logs.filter(
+      (log) =>
+        log.threat_type ===
+        "Prompt Injection"
+    ).length,
+
+    jailbreak: logs.filter(
+      (log) =>
+        log.threat_type ===
+        "Jailbreak"
+    ).length,
+
+    toolHijacking: logs.filter(
+      (log) =>
+        log.threat_type ===
+        "Tool Hijacking"
+    ).length,
+  };
+
+  function exportSecurityReport() {
+    const report = {
+
+      generatedAt:
+        new Date().toLocaleString(),
+
+      trustScore,
+
+      securityPosture:
+        posture.label,
+
+      totalRequests:
+        logs.length,
+
+      blockedAttacks:
+        logs.filter(
+          (log) =>
+            log.decision === "BLOCK"
+        ).length,
+
+      warnings:
+        logs.filter(
+          (log) =>
+            log.decision === "WARNING"
+        ).length,
+
+      attackRate:
+        logs.length > 0
+          ? Math.round(
+              (
+                logs.filter(
+                  (log) =>
+                    log.decision ===
+                    "BLOCK"
+                ).length /
+                logs.length
+              ) * 100
+            )
+          : 0,
+
+      recentThreats: logs.slice(-10),
+    };
+
+    const json =
+      JSON.stringify(report, null, 2);
+
+    const blob = new Blob(
+      [json],
+      {
+        type: "application/json",
+      }
+    );
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+
+    link.download =
+      "security-report.json";
+
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
   return (
 
     <main className="min-h-screen bg-black text-white">
@@ -276,10 +504,20 @@ export default function Home() {
 
           <div className="flex gap-3">
 
-            <div className="px-4 py-2 rounded-lg bg-green-900/30 border border-green-700">
+            <div className="flex items-center gap-3">
+
+              <div className="relative">
+
+                <div className="w-4 h-4 bg-green-500 rounded-full animate-ping absolute" />
+
+                <div className="w-4 h-4 bg-green-500 rounded-full relative" />
+
+              </div>
+
               <p className="text-green-400 font-semibold">
                 Firewall Active
               </p>
+
             </div>
 
           </div>
@@ -294,7 +532,7 @@ export default function Home() {
 
         {/* TOP ANALYTICS */}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
 
           {/* RISK SCORE */}
 
@@ -347,6 +585,53 @@ export default function Home() {
             </h2>
 
           </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+            <p className="text-zinc-400 mb-2">
+              Trust Score
+            </p>
+
+            <h2
+              className={`text-4xl font-bold ${posture.color}`}
+            >
+              {trustScore}
+            </h2>
+
+            <p className={`mt-2 font-semibold ${posture.color}`}>
+              {posture.label}
+            </p>
+
+          </div>
+
+        </div>
+
+        <div className={`mb-8 border rounded-2xl p-5 ${
+            trustScore >= 80
+              ? "bg-green-900/20 border-green-700"
+              : trustScore >= 50
+              ? "bg-yellow-900/20 border-yellow-700"
+              : "bg-red-900/20 border-red-700"
+          }`}
+        >
+
+          <h2
+            className={`text-2xl font-bold ${
+              posture.color
+            }`}
+          >
+            Security Posture: {posture.label}
+          </h2>
+
+          <p className="text-zinc-300 mt-2">
+
+            {trustScore >= 80
+              ? "System activity appears safe and trusted."
+              : trustScore >= 50
+              ? "Suspicious activity patterns detected."
+              : "Critical threat behavior detected. Immediate investigation recommended."}
+
+          </p>
 
         </div>
 
@@ -429,7 +714,14 @@ export default function Home() {
             </button>
 
             <button
-              onClick={() => setLogs([])}
+              onClick={async () => {
+                await fetch("http://127.0.0.1:8000/clear-logs", {
+                  method: "DELETE",
+                });
+
+                await loadLogs();
+                await loadRuntimeLogs();
+              }}
               className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg"
             >
               Clear Logs
@@ -550,7 +842,6 @@ export default function Home() {
               {/* THREATS */}
 
               <div>
-
                 <p className="text-zinc-400 mb-3">
                   Detected Threat Signatures
                 </p>
@@ -749,7 +1040,7 @@ export default function Home() {
 
           </div>
           {/* Runtime Analytics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mt-10">
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
 
               <p className="text-zinc-400 mb-2">
@@ -802,6 +1093,8 @@ export default function Home() {
 
         </div>
 
+        {/* Analytics Cards */}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
@@ -852,27 +1145,171 @@ export default function Home() {
 
           </div>
 
+          <div className="bg-zinc-900 border   border-zinc-800 rounded-2xl p-6">
+
+            <p className="text-zinc-400 mb-2">
+              Attack Rate
+            </p>
+
+            <h2 className="text-4xl font-bold text-orange-400">
+
+              {logs.length > 0
+                ? Math.round(
+                    (
+                      logs.filter(
+                        (log) => log.decision === "BLOCK"
+                      ).length /
+                      logs.length
+                    ) * 100
+                  )
+                : 0}
+              %
+
+            </h2>
+
+          </div>
+
+        </div>
+
+        {/* heatMap */}
+
+        <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+          <h2 className="text-3xl font-bold mb-6">
+            Threat Heatmap
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+            <div className="bg-red-900/20 border border-red-700 rounded-xl p-5">
+
+              <p className="text-zinc-400 mb-2">
+                Prompt Injection
+              </p>
+
+              <h2 className="text-4xl font-bold text-red-500">
+                {threatStats.promptInjection}
+              </h2>
+
+            </div>
+
+            <div className="bg-yellow-900/20 border border-yellow-700 rounded-xl p-5">
+
+              <p className="text-zinc-400 mb-2">
+                Jailbreak
+              </p>
+
+              <h2 className="text-4xl font-bold text-yellow-400">
+                {threatStats.jailbreak}
+              </h2>
+
+            </div>
+
+            <div className="bg-pink-900/20 border border-pink-700 rounded-xl p-5">
+
+              <p className="text-zinc-400 mb-2">
+                Tool Hijacking
+              </p>
+
+              <h2 className="text-4xl font-bold text-pink-400">
+                {threatStats.toolHijacking}
+              </h2>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={exportSecurityReport}
+            className="bg-cyan-600 hover:bg-cyan-700 px-5 py-3 rounded-xl font-semibold"
+          >
+            Export Security Report
+          </button>
         </div>
 
         <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
 
           <div className="flex justify-between items-center mb-6">
 
+            <div className="flex justify-between items-center mb-4">
+
+            <div className="text-zinc-400">
+              Active Threat Events
+            </div>
+
+            <div className="text-red-500 font-bold text-xl">
+              {
+                logs.filter(
+                  (log) => log.decision === "BLOCK"
+                ).length
+              }
+            </div>
+
+            </div>
+
+            {/* Search + Filtered */}
+
+            <div className="flex gap-4 mb-6">
+
+              <input
+                type="text"
+                placeholder="Search threats..."
+                value={searchTerm}
+                onChange={(e) =>
+                  setSearchTerm(e.target.value)
+                }
+                className="flex-1 bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 outline-none"
+              />
+
+              <select
+                value={filterType}
+                onChange={(e) =>
+                  setFilterType(e.target.value)
+                }
+                className="bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+              >
+
+              <option value="ALL">All</option>
+
+              <option value="BLOCK">
+                Blocked
+              </option>
+
+              <option value="ALLOW">
+                Allowed
+              </option>
+
+              <option value="WARNING">
+                Warning
+              </option>
+
+              </select>
+
+            </div>
+
             <h2 className="text-3xl font-bold">
               Live Threat Feed
             </h2>
 
-            <div className="text-red-400 font-semibold">
-              Monitoring Active
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-ping absolute" />
+                <div className="w-3 h-3 bg-red-500 rounded-full relative" />
+              </div>
+              <div className="text-red-400 font-semibold">
+                Monitoring Active
+              </div>
             </div>
-
           </div>
 
           <div className="space-y-4">
 
-            {logs.length > 0 ? (
+            {filteredLogs.length > 0 ? (
 
-              logs.map((log, index) => (
+              filteredLogs.map((log, index) => (
 
                 <div
                   key={index}
@@ -930,55 +1367,104 @@ export default function Home() {
           </div>
 
         </div>
+        {/* ACTIVITY TIMELINE */}
+          <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
 
-        <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="flex justify-between items-center mb-6">
 
-        <h2 className="text-3xl font-bold mb-6">
-          Activity Timeline
-        </h2>
+            <div>
 
-        <div className="space-y-4">
+              <h2 className="text-3xl font-bold">
+                Activity Timeline
+              </h2>
 
-          {logs.map((log, index) => (
-
-            <div
-              key={index}
-              className="flex items-start gap-4"
-            >
-
-              <div
-                className={`w-4 h-4 rounded-full mt-2 ${
-                  log.decision === "BLOCK"
-                    ? "bg-red-500"
-                    : log.decision === "WARNING"
-                    ? "bg-yellow-400"
-                    : "bg-green-500"
-                }`}
-              />
-
-              <div>
-
-                <p className="font-semibold">
-                  {log.decision} - {log.threat_type}
-                </p>
-
-                <p className="text-zinc-500 text-sm">
-                  {log.timestamp}
-                </p>
-
-              </div>
+              <p className="text-zinc-500 mt-1">
+                Historical security intelligence events
+              </p>
 
             </div>
 
-          ))}
+            <div className="bg-zinc-800 px-4 py-2 rounded-xl">
+
+              <span className="text-zinc-400">
+                Events:
+              </span>
+
+              <span className="ml-2 font-bold text-cyan-400">
+                {logs.length}
+              </span>
+
+            </div>
+
+          </div>
+
+          <div className="space-y-4">
+
+            {logs.length > 0 ? (
+
+              logs.map((log, index) => (
+
+                <div
+                  key={index}
+                  className="flex items-start gap-4"
+                >
+
+                  <div
+                    className={`w-4 h-4 rounded-full mt-2 ${
+                      log.decision === "BLOCK"
+                        ? "bg-red-500"
+                        : log.decision === "WARNING"
+                        ? "bg-yellow-400"
+                        : "bg-green-500"
+                    }`}
+                  />
+
+                  <div>
+
+                    <p
+                      className={`font-semibold ${getSeverityColor(
+                        log.risk_score
+                      )}`}
+                    >
+                      {log.decision} - {log.threat_type}
+                    </p>
+
+                    <div className="flex gap-2 mt-2">
+
+                      <div className="bg-zinc-800 px-3 py-1 rounded-lg text-xs">
+                        Risk: {log.risk_score}
+                      </div>
+
+                      <div className="bg-red-900/30 border border-red-700 px-3 py-1 rounded-lg text-xs text-red-400">
+                        {log.decision}
+                      </div>
+
+                    </div>
+
+                    <p className="text-zinc-500 text-sm mt-2">
+                      {log.timestamp}
+                    </p>
+
+                  </div>
+
+                </div>
+
+              ))
+
+            ) : (
+
+              <div className="text-zinc-500">
+                No historical security events found.
+              </div>
+
+            )}
+
+          </div>
 
         </div>
-
-       </div>
 
       </div>
 
     </main>
-
   );
 }

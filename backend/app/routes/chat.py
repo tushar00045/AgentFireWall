@@ -4,6 +4,7 @@ from app.agents.agent import ask_agent
 from app.firewall.validator import validate_prompt
 from app.firewall.tool_validator import validate_tool
 from app.tools.tool_executor import execute_tool
+from app.database.logs import (save_security_log,save_runtime_log,get_runtime_logs,get_security_logs)
 router = APIRouter()
 
 
@@ -15,6 +16,18 @@ def chat(request: PromptRequest):
     # ==============================
 
     firewall_result = validate_prompt(request.prompt)
+    
+    # =====================================
+    # SAVE SECURITY EVENT
+    # =====================================
+
+    save_security_log(
+        request.prompt,
+        firewall_result["decision"],
+        firewall_result["risk_score"],
+        firewall_result["llm_analysis"]["threat_type"],
+        firewall_result["llm_analysis"]["reason"]
+    )
 
     # ==============================
     # LOGGING SECTION
@@ -104,6 +117,12 @@ def chat(request: PromptRequest):
                 "status": "BLOCKED",
                 "message": validation["message"]
             }
+            
+            save_runtime_log(
+                requested_tool,
+                "BLOCKED",
+                validation["message"]
+            )
 
         # =================================
         # EXECUTE SAFE TOOL
@@ -118,6 +137,12 @@ def chat(request: PromptRequest):
                 "status": "EXECUTED",
                 "message": execution["message"]
             }
+            
+            save_runtime_log(
+                requested_tool,
+                "EXECUTED",
+                execution["message"]
+            )
 
         print(f"Tool Result: {tool_result}")
         print("=====================================\n")
@@ -131,4 +156,32 @@ def chat(request: PromptRequest):
         "response": response,
         "firewall": firewall_result,
         "tool_result": tool_result
+    }
+    
+# =========================================
+# FETCH SECURITY LOGS
+# =========================================
+
+@router.get("/security-logs")
+def fetch_security_logs():
+
+    logs = get_security_logs()
+
+    return {
+        "logs": logs
+    }
+
+
+# =========================================
+# FETCH RUNTIME LOGS
+# =========================================
+
+@router.get("/runtime-logs")
+
+def fetch_runtime_logs():
+
+    logs = get_runtime_logs()
+
+    return {
+        "logs": logs
     }
