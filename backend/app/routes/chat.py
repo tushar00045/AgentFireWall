@@ -4,6 +4,7 @@ from app.agents.agent import ask_agent
 from app.firewall.validator import validate_prompt
 from app.firewall.tool_validator import validate_tool
 from app.tools.tool_executor import execute_tool
+from app.graph.security_graph import graph
 from app.database.logs import (
     save_security_log,
     save_runtime_log,
@@ -24,8 +25,46 @@ def chat(request: PromptRequest):
     # FIREWALL VALIDATION
     # =====================================================
 
-    firewall_result = validate_prompt(request.prompt)
+    # firewall_result = validate_prompt(request.prompt)
+    
+    # =====================================================
+    # LANGGRAPH ORCHESTRATION
+    # =====================================================
 
+    result = graph.invoke({
+        "prompt": request.prompt,
+        "threat_type": "",
+        "risk_score": 0,
+        "decision": "",
+        "runtime_blocked": False,
+        "reasoning": "",
+        "trace": []
+    })
+ 
+    firewall_result = {
+        "decision":
+        result["decision"],
+
+        "risk_score":
+        result["risk_score"],
+
+        "threats":
+        [result["threat_type"]],
+
+        "llm_analysis": {
+
+            "threat_type":
+            result["threat_type"],
+
+            "reason":
+            result["reasoning"]
+
+        },
+
+        "trace":
+        result["trace"]
+    }
+    
     # =====================================================
     # SAVE SECURITY LOG
     # =====================================================
@@ -124,7 +163,6 @@ def chat(request: PromptRequest):
     tool_result = None
 
     if requested_tool:
-
         validation = validate_tool(requested_tool)
 
         print("\n========== TOOL VALIDATION ==========")
@@ -136,7 +174,6 @@ def chat(request: PromptRequest):
         # =================================================
 
         if not validation["allowed"]:
-
             tool_result = {
                 "tool": requested_tool,
                 "status": "BLOCKED",
@@ -156,7 +193,6 @@ def chat(request: PromptRequest):
         # =================================================
 
         else:
-
             execution = execute_tool(requested_tool)
 
             tool_result = {

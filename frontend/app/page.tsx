@@ -44,6 +44,8 @@ export default function Home() {
 
   const [filterType, setFilterType] = useState("ALL");
 
+  const [trace, setTrace] = useState<any[]>([])
+
   // =====================================================
   // AUTO REFRESH
   // =====================================================
@@ -151,15 +153,13 @@ export default function Home() {
       const data = await res.json();
 
       setFirewallData(data.firewall);
-
       setToolResult(data.tool_result);
 
+      setTrace(data.firewall?.trace || [])
+
       if (data.blocked) {
-
         setResponse(data.message);
-
       } else {
-
         setResponse(data.response);
       }
 
@@ -577,6 +577,45 @@ export default function Home() {
         <RuntimeFeed
           toolLogs={toolLogs}
         />
+
+        <div className="mt-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+
+          <h2 className="text-3xl font-bold mb-6">
+            AI Orchestration Flow
+          </h2>
+
+          <div className="space-y-4">
+
+            {trace.map((step, index) => (
+
+              <div
+                key={index}
+                className="bg-black border border-zinc-700 rounded-xl p-5"
+              >
+
+                <div className="flex justify-between items-center">
+
+                  <h3 className="text-lg font-semibold text-cyan-400">
+                    {step.agent}
+                  </h3>
+
+                  <span className="text-zinc-500">
+                    Step {index + 1}
+                  </span>
+
+                </div>
+
+                <p className="text-zinc-300 mt-3">
+                  {step.result}
+                </p>
+
+              </div>
+
+            ))}
+
+          </div>
+
+        </div>
 
         {/* TIMELINE */}
 
