@@ -4,22 +4,31 @@ from app.agents.agent import ask_agent
 from app.firewall.validator import validate_prompt
 from app.firewall.tool_validator import validate_tool
 from app.tools.tool_executor import execute_tool
-from app.database.logs import (save_security_log,save_runtime_log,get_runtime_logs,get_security_logs)
+from app.database.logs import (
+    save_security_log,
+    save_runtime_log,
+    get_runtime_logs,
+    get_security_logs
+)
 router = APIRouter()
 
+
+# =========================================================
+# CHAT ROUTE
+# =========================================================
 
 @router.post("/chat")
 def chat(request: PromptRequest):
 
-    # ==============================
+    # =====================================================
     # FIREWALL VALIDATION
-    # ==============================
+    # =====================================================
 
     firewall_result = validate_prompt(request.prompt)
-    
-    # =====================================
-    # SAVE SECURITY EVENT
-    # =====================================
+
+    # =====================================================
+    # SAVE SECURITY LOG
+    # =====================================================
 
     save_security_log(
         request.prompt,
@@ -29,49 +38,24 @@ def chat(request: PromptRequest):
         firewall_result["llm_analysis"]["reason"]
     )
 
-    # ==============================
-    # LOGGING SECTION
-    # ==============================
+    # =====================================================
+    # CONSOLE LOGGING
+    # =====================================================
 
     print("\n========================================")
     print(" NEW REQUEST RECEIVED ")
     print("========================================")
 
     print(f"Prompt: {request.prompt}")
-
     print(f"Risk Score: {firewall_result['risk_score']}")
-
     print(f"Decision: {firewall_result['decision']}")
-
     print(f"Threats Detected: {firewall_result['threats']}")
 
     print("========================================\n")
 
-    # ==============================
-    # BLOCK MALICIOUS PROMPTS
-    # ==============================
-
-    if firewall_result["decision"] == "BLOCK":
-
-        print(" PROMPT BLOCKED BY FIREWALL\n")
-
-        return {
-            "blocked": True,
-            "message": "Prompt blocked by Agent Firewall",
-            "firewall": firewall_result
-        }
-
-    # ==============================
-    # SAFE PROMPT → SEND TO AI
-    # ==============================
-
-    print(" SAFE PROMPT ALLOWED\n")
-
-    response = ask_agent(request.prompt)
-    
-    # =====================================
-    # TOOL SIMULATION DETECTION
-    # =====================================
+    # =====================================================
+    # TOOL DETECTION
+    # =====================================================
 
     requested_tool = None
 
@@ -92,9 +76,50 @@ def chat(request: PromptRequest):
     elif "send email" in prompt_lower:
         requested_tool = "send_email"
 
-    # =====================================
+    # =====================================================
+    # BLOCK MALICIOUS PROMPTS
+    # =====================================================
+
+    if firewall_result["decision"] == "BLOCK":
+
+        print(" PROMPT BLOCKED BY FIREWALL\n")
+
+        # =================================================
+        # SAVE RUNTIME LOG FOR BLOCKED TOOL ATTEMPTS
+        # =================================================
+
+        if requested_tool:
+
+            save_runtime_log(
+                requested_tool,
+                "BLOCKED",
+                "Blocked by firewall before execution"
+            )
+
+            print(" BLOCKED TOOL ATTEMPT LOGGED\n")
+
+        return {
+            "blocked": True,
+            "message": "Prompt blocked by Agent Firewall",
+            "firewall": firewall_result,
+            "tool_result": {
+                "tool": requested_tool,
+                "status": "BLOCKED",
+                "message": "Blocked by firewall before execution"
+            } if requested_tool else None
+        }
+
+    # =====================================================
+    # SAFE PROMPT → SEND TO AGENT
+    # =====================================================
+
+    print(" SAFE PROMPT ALLOWED\n")
+
+    response = ask_agent(request.prompt)
+
+    # =====================================================
     # TOOL VALIDATION
-    # =====================================
+    # =====================================================
 
     tool_result = None
 
@@ -106,9 +131,9 @@ def chat(request: PromptRequest):
         print(f"Requested Tool: {requested_tool}")
         print(f"Validation Result: {validation}")
 
-        # =================================
+        # =================================================
         # BLOCK TOOL
-        # =================================
+        # =================================================
 
         if not validation["allowed"]:
 
@@ -117,16 +142,18 @@ def chat(request: PromptRequest):
                 "status": "BLOCKED",
                 "message": validation["message"]
             }
-            
+
             save_runtime_log(
                 requested_tool,
                 "BLOCKED",
                 validation["message"]
             )
 
-        # =================================
+            print(" TOOL BLOCKED & LOGGED")
+
+        # =================================================
         # EXECUTE SAFE TOOL
-        # =================================
+        # =================================================
 
         else:
 
@@ -137,19 +164,21 @@ def chat(request: PromptRequest):
                 "status": "EXECUTED",
                 "message": execution["message"]
             }
-            
+
             save_runtime_log(
                 requested_tool,
                 "EXECUTED",
                 execution["message"]
             )
 
+            print(" TOOL EXECUTED & LOGGED")
+
         print(f"Tool Result: {tool_result}")
         print("=====================================\n")
 
-    # ==============================
+    # =====================================================
     # RETURN RESPONSE
-    # ==============================
+    # =====================================================
 
     return {
         "blocked": False,
@@ -157,31 +186,26 @@ def chat(request: PromptRequest):
         "firewall": firewall_result,
         "tool_result": tool_result
     }
-    
-# =========================================
+
+# =========================================================
 # FETCH SECURITY LOGS
-# =========================================
+# =========================================================
 
 @router.get("/security-logs")
 def fetch_security_logs():
-
     logs = get_security_logs()
-
     return {
         "logs": logs
     }
 
 
-# =========================================
+# =========================================================
 # FETCH RUNTIME LOGS
-# =========================================
+# =========================================================
 
 @router.get("/runtime-logs")
-
 def fetch_runtime_logs():
-
     logs = get_runtime_logs()
-
     return {
         "logs": logs
     }
