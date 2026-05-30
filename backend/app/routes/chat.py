@@ -38,7 +38,9 @@ def chat(request: PromptRequest):
         "decision": "",
         "runtime_blocked": False,
         "reasoning": "",
-        "trace": []
+        "trace": [],
+        "reasoning_chain":[],
+        "agent_metrics": {}
     })
  
     firewall_result = {
@@ -62,7 +64,12 @@ def chat(request: PromptRequest):
         },
 
         "trace":
-        result["trace"]
+        result["trace"],
+        
+        "reasoning_chain":
+        result["reasoning_chain"],
+        
+        "agent_metrics":result["agent_metrics"]
     }
     
     # =====================================================
