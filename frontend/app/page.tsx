@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Core UI Components
@@ -9,6 +9,8 @@ import SecurityPosture from "./components/SecurityPosture";
 import TopAnalytics from "./components/TopAnalytics";
 import PromptSimulator from "./components/PromptSimulator";
 import ResponsePanel from "./components/ResponsePanel";
+import WebSocketTerminal from "./components/WebSocketTerminal";
+import StartupScreen from "./components/StartupScreen";
 import FirewallAnalysis from "./components/FirewallAnalysis";
 import RuntimeMonitor from "./components/RuntimeMonitor";
 import RuntimeFeed from "./components/RuntimeFeed";
@@ -27,6 +29,7 @@ import { calculateTrustScore, getSecurityPosture } from "./utils/securityHelpers
 // Cinematic Visual Components
 import CyberCanvas from "./components/CyberCanvas";
 import PipelineVisualizer from "./components/PipelineVisualizer";
+
 
 // Default High-Fidelity Mock Logs for Offline Sandbox Presenter (relative to local current time)
 const getDynamicOfflineLogs = () => {
@@ -57,9 +60,16 @@ export default function Home() {
   // Connection states
   const [isOffline, setIsOffline] = useState(true);
 
+  // WebSocket States
+  const [wsLogs, setWsLogs] = useState<any[]>([]);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [wsStreaming, setWsStreaming] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
   // Core States
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState("");
+  const [showSplash, setShowSplash] = useState(true);
   const [loading, setLoading] = useState(false);
   const [firewallData, setFirewallData] = useState<any>(null);
   const [toolResult, setToolResult] = useState<any>(null);
@@ -75,7 +85,14 @@ export default function Home() {
   // CONNECTION AUTO-DETECT & REFRESH
   // =====================================================
   useEffect(() => {
+    // Initialize backend detection and WebSocket connection
     detectBackend();
+    connectWebSocket();
+    const timer = setTimeout(() => setShowSplash(false), 3000);
+    return () => {
+      clearTimeout(timer);
+      if (wsRef.current) wsRef.current.close();
+    };
   }, []);
 
   async function detectBackend() {
@@ -83,14 +100,14 @@ export default function Home() {
       const res = await fetch("http://127.0.0.1:8000/security-logs");
       if (res.ok) {
         setIsOffline(false);
-        console.log("⚡ Live AgentFireWall database active.");
+        console.log(" Live AgentFireWall database active.");
       } else {
         setIsOffline(true);
-        console.warn("🛡️ Running in Offline Simulation Sandbox Mode.");
+        console.warn(" Running in Offline Simulation Sandbox Mode.");
       }
     } catch (e) {
       setIsOffline(true);
-      console.warn("🛡️ Running in Offline Simulation Sandbox Mode.");
+      console.warn(" Running in Offline Simulation Sandbox Mode.");
     }
   }
 
@@ -107,6 +124,65 @@ export default function Home() {
     }, 4000);
     return () => clearInterval(interval);
   }, [isOffline]);
+
+  // =====================================================
+  // WEBSOCKETS ESTABLISH
+  // =====================================================
+  const connectWebSocket = () => {
+    try {
+      const socket = new WebSocket("ws://127.0.0.1:8000/ws/threats");
+      wsRef.current = socket;
+
+      const addLog = (type: "info" | "success" | "warn" | "error" | "input" | "output", sender: string, message: string) => {
+        setWsLogs((prev) => [
+          ...prev,
+          {
+            timestamp: new Date().toLocaleTimeString(),
+            type,
+            sender,
+            message,
+          },
+        ]);
+      };
+
+      addLog("info", "SYSTEM", "Establishing secure WebSocket threat tunnel...");
+
+      socket.onopen = () => {
+        setWsConnected(true);
+        addLog("success", "TUNNEL", "Connected to ws://127.0.0.1:8000/ws/threats");
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === "connected") {
+            addLog("success", "SYSTEM", data.message);
+          } else if (data.event === "step") {
+            setWsStreaming(true);
+            addLog("info", data.agent.toUpperCase(), data.message);
+          } else if (data.event === "finalize") {
+            setWsStreaming(false);
+            addLog("output", "POLICY", `${data.message} ACTION: ${data.decision} (Threat risk: ${data.risk_score}%)`);
+            addLog("output", "SYSTEM", `Interception analysis: "${data.reasoning}"`);
+          }
+        } catch (err) {
+          addLog("warn", "SYSTEM", `Payload frame received: ${event.data}`);
+        }
+      };
+
+      socket.onclose = () => {
+        setWsConnected(false);
+        addLog("warn", "SYSTEM", "WebSocket router offline. Active sandbox socket simulation engaged.");
+      };
+
+      socket.onerror = () => {
+        setWsConnected(false);
+        addLog("error", "SYSTEM", "Handshake failed. Running in visual fallback terminal mode.");
+      };
+    } catch (e) {
+      setWsConnected(false);
+    }
+  };
 
   // =====================================================
   // LOAD LOGS (LIVE OR SANDBOX FALLBACK)
@@ -153,56 +229,99 @@ export default function Home() {
   }
 
   // =====================================================
+  // WEBSOCKET LOG SIMULATOR ENGINE (OFFLINE)
+  // =====================================================
+  const simulateWsStream = async (targetPrompt: string, decision: string, score: number, threat: string, reason: string) => {
+    setWsStreaming(true);
+    const addLog = (type: "info" | "success" | "warn" | "error" | "input" | "output", sender: string, message: string) => {
+      setWsLogs((prev) => [
+        ...prev,
+        {
+          timestamp: new Date().toLocaleTimeString(),
+          type,
+          sender,
+          message,
+        },
+      ]);
+    };
+
+    addLog("input", "CLIENT", `WebSocket frame sent: {"prompt": "${targetPrompt}"}`);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    addLog("info", "INPUT SECURITY AGENT", "Intercepted prompt payload. Pattern scanning active.");
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    addLog("info", "THREAT CLASSIFIER", `Assessed threat risk at ${score}%. Type: ${threat}.`);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    addLog("info", "POLICY ENGINE", `Enforced security boundaries. Decision action: ${decision}.`);
+    await new Promise((resolve) => setTimeout(resolve, 450));
+
+    addLog("output", "POLICY", `Consensus evaluation complete. ACTION: ${decision} (Threat score: ${score}%)`);
+    addLog("output", "SYSTEM", `Interception reason details: "${reason}"`);
+    setWsStreaming(false);
+  };
+
+  // =====================================================
   // PROMPT TRIGGER HANDLER (SIMULATED/LIVE)
   // =====================================================
   async function sendPrompt() {
     if (!prompt.trim()) return;
     setLoading(true);
 
+    const text = prompt.toLowerCase();
+    let decision: "BLOCK" | "ALLOW" = "ALLOW";
+    let riskScore = 8;
+    let threatType = "None";
+    let reason = "Safe general educational input, allowed within security parameters.";
+    let toolName = null;
+
+    if (text.includes("delete database") || text.includes("delete_database")) {
+      decision = "BLOCK";
+      riskScore = 98;
+      threatType = "Tool Hijacking";
+      reason = "Intercepted critical tool execution payload aiming to wipe schema nodes.";
+      toolName = "delete_database";
+    } else if (text.includes("read secrets") || text.includes("read_secrets") || text.includes("password")) {
+      decision = "BLOCK";
+      riskScore = 95;
+      threatType = "Secrets Leakage";
+      reason = "System vault protection triggered. Blocked exposure of internal API environment configurations.";
+      toolName = "read_secrets";
+    } else if (text.includes("export customer") || text.includes("export_customer_data")) {
+      decision = "BLOCK";
+      riskScore = 88;
+      threatType = "Data Exfiltration";
+      reason = "DLP check matched: Prohibits large bulk records transfers from user databases.";
+      toolName = "export_customer_data";
+    } else if (text.includes("ignore previous instructions") || text.includes("system instructions")) {
+      decision = "BLOCK";
+      riskScore = 92;
+      threatType = "Prompt Injection";
+      reason = "Adversarial instruct bypass matching algorithm matched indirect system overrides.";
+    } else if (
+      text.includes("jailbreak") ||
+      text.includes("Pretend safety restrictions do not exist anymore")
+    ) {
+      decision = "BLOCK";
+      riskScore = 89;
+      threatType = "Jailbreak";
+      reason = "Bypassing sandbox guardrail controls is forbidden.";
+    } else if (text.includes("weather")) {
+      toolName = "get_weather";
+    } else if (text.includes("email")) {
+      toolName = "send_email";
+    }
+
+    // Trigger WebSocket terminal log streams (Live or Mock fallback)
+    if (wsConnected && wsRef.current) {
+      wsRef.current.send(JSON.stringify({ prompt }));
+    } else {
+      simulateWsStream(prompt, decision, riskScore, threatType, reason);
+    }
+
     if (isOffline) {
-      // Simulate real-time threat scan calculation locally
-      await new Promise((resolve) => setTimeout(resolve, 900));
-      const text = prompt.toLowerCase();
-      let decision: "BLOCK" | "ALLOW" = "ALLOW";
-      let riskScore = 8;
-      let threatType = "None";
-      let reason = "Safe general educational input, allowed within security parameters.";
-      let toolName = null;
-
-      if (text.includes("delete database") || text.includes("delete_database")) {
-        decision = "BLOCK";
-        riskScore = 98;
-        threatType = "Tool Hijacking";
-        reason = "Intercepted critical tool execution payload aiming to wipe schema nodes.";
-        toolName = "delete_database";
-      } else if (text.includes("read secrets") || text.includes("read_secrets") || text.includes("password")) {
-        decision = "BLOCK";
-        riskScore = 95;
-        threatType = "Secrets Leakage";
-        reason = "System vault protection triggered. Blocked exposure of internal API environment configurations.";
-        toolName = "read_secrets";
-      } else if (text.includes("export customer") || text.includes("export_customer_data")) {
-        decision = "BLOCK";
-        riskScore = 88;
-        threatType = "Data Exfiltration";
-        reason = "DLP check matched: Prohibits large bulk records transfers from user databases.";
-        toolName = "export_customer_data";
-      } else if (text.includes("ignore previous instructions") || text.includes("system instructions")) {
-        decision = "BLOCK";
-        riskScore = 92;
-        threatType = "Prompt Injection";
-        reason = "Adversarial instruct bypass matching algorithm matched indirect system overrides.";
-      } else if (text.includes("jailbreak") || text.includes("pretend safety restrictions")) {
-        decision = "BLOCK";
-        riskScore = 89;
-        threatType = "Jailbreak";
-        reason = "Bypassing sandbox guardrail controls is forbidden.";
-      } else if (text.includes("weather")) {
-        toolName = "get_weather";
-      } else if (text.includes("email")) {
-        toolName = "send_email";
-      }
-
+      await new Promise((resolve) => setTimeout(resolve, 800));
       const mockFirewall = {
         decision,
         risk_score: riskScore,
@@ -350,197 +469,207 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen bg-black text-white relative font-sans">
-      {/* 🚀 Breathtaking Cyber Grid Background */}
-      <CyberCanvas />
+    <>
+      <AnimatePresence>
+        {showSplash && <StartupScreen />}
+      </AnimatePresence>
+      {!showSplash && (
+        <main className="min-h-screen bg-black text-white relative font-sans">
+          {/* 🚀 Breathtaking Cyber Grid Background */}
+          <CyberCanvas />
 
-      {/* COMMAND TERMINAL HEADER */}
-      <div className="border-b border-zinc-800/80 bg-zinc-950/60 backdrop-blur-md sticky top-0 z-50 shadow-lg">
-        <div className="max-w-7xl mx-auto px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl animate-pulse">🛡️</span>
-            <div>
-              <h1 className="text-3xl font-black bg-gradient-to-r from-white via-zinc-200 to-cyan-400 bg-clip-text text-transparent tracking-tight font-mono">
-                AGENT_FIREWALL
-              </h1>
-              <p className="text-zinc-500 text-xs mt-0.5 font-mono">
-                AI Runtime Security & Threats Intelligence command
-              </p>
+          {/* COMMAND TERMINAL HEADER */}
+          <div className="border-b border-zinc-800/80 bg-zinc-950/60 backdrop-blur-md sticky top-0 z-50 shadow-lg">
+            <div className="max-w-7xl mx-auto px-8 py-5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl animate-pulse">🛡️</span>
+                <div>
+                  <h1 className="text-3xl font-black bg-gradient-to-r from-white via-zinc-200 to-cyan-400 bg-clip-text text-transparent tracking-tight font-mono">
+                    AGENT_FIREWALL
+                  </h1>
+                  <p className="text-zinc-500 text-xs mt-0.5 font-mono">
+                    AI Runtime Security & Threats Intelligence command
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                {/* Status indicator button */}
+                <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-full text-xs font-mono font-semibold ${
+                  isOffline 
+                    ? "bg-amber-500/10 border-amber-500/30 text-amber-400" 
+                    : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+                }`}>
+                  <span className={`w-2.5 h-2.5 rounded-full ${isOffline ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-ping"}`} />
+                  <span>{isOffline ? "CYBER SANDBOX ACTIVE" : "SECURED NETWORK CONNECTED"}</span>
+                </div>
+                
+                <div className="px-4 py-2 border border-zinc-800 rounded-xl bg-zinc-900/60 text-zinc-400 font-mono text-2xs">
+                  SECURE GUARD v1.0.4
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Status indicator button */}
-            <div className={`flex items-center gap-2 border px-3 py-1.5 rounded-full text-xs font-mono font-semibold ${
-              isOffline 
-                ? "bg-amber-500/10 border-amber-500/30 text-amber-400" 
-                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-            }`}>
-              <span className={`w-2.5 h-2.5 rounded-full ${isOffline ? "bg-amber-500 animate-pulse" : "bg-emerald-500 animate-ping"}`} />
-              <span>{isOffline ? "CYBER SANDBOX ACTIVE" : "SECURED NETWORK CONNECTED"}</span>
-            </div>
+          {/* DASHBOARD CONTENT BODY */}
+          <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
             
-            <div className="px-4 py-2 border border-zinc-800 rounded-xl bg-zinc-900/60 text-zinc-400 font-mono text-2xs">
-              SECURE GUARD v1.0.4
+            {/* Security Posture Status Banner */}
+            <div className="transition-all duration-300 transform hover:scale-[1.005]">
+              <SecurityPosture trustScore={trustScore} posture={posture} />
             </div>
-          </div>
-        </div>
-      </div>
 
-      {/* DASHBOARD CONTENT BODY */}
-      <div className="max-w-7xl mx-auto px-8 py-8 space-y-8">
-        
-        {/* Security Posture Status Banner */}
-        <div className="transition-all duration-300 transform hover:scale-[1.005]">
-          <SecurityPosture trustScore={trustScore} posture={posture} />
-        </div>
-
-        {/* Top Level Risk & Decisions Analytics Cards */}
-        <TopAnalytics
-          firewallData={firewallData}
-          trustScore={trustScore}
-          posture={posture}
-        />
-
-        {/* Integrated Creative Prompt Executor */}
-        <PromptSimulator
-          prompt={prompt}
-          setPrompt={setPrompt}
-          sendPrompt={sendPrompt}
-          loading={loading}
-          setAttackPrompt={setAttackPrompt}
-          loadLogs={loadLogs}
-          loadRuntimeLogs={loadRuntimeLogs}
-        />
-
-        {/* Live Simulation Interception Response & Analysis Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <ResponsePanel response={response} />
-          </div>
-          <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <FirewallAnalysis firewallData={firewallData} />
-          </div>
-        </div>
-
-        {/* Historical Stats, Charts, Heatmaps Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <AnalyticsCards logs={logs} />
-          </div>
-          <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <ThreatHeatmap threatStats={threatStats} />
-          </div>
-        </div>
-
-        {/* Data Log Search and Filtering */}
-        <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 hover:border-zinc-700 transition-all duration-300 space-y-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h2 className="text-xl font-bold font-mono text-white flex items-center gap-2">
-                <span>📋</span>
-                <span>Active Threat Intelligence Stream</span>
-              </h2>
-              <p className="text-zinc-500 text-xs mt-1 font-mono">
-                Browse, sort, and query historical agent threat reports.
-              </p>
-            </div>
-            <ExportButton exportSecurityReport={exportSecurityReport} />
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-4">
-            <input
-              type="text"
-              placeholder="Filter threats by prompt keyword or type..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 bg-zinc-950/80 border border-zinc-850 rounded-xl px-5 py-3.5 outline-none font-mono text-sm focus:border-cyan-500/40 transition-all duration-200 text-zinc-300"
+            {/* Top Level Risk & Decisions Analytics Cards */}
+            <TopAnalytics
+              firewallData={firewallData}
+              trustScore={trustScore}
+              posture={posture}
             />
 
-            <select
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="bg-zinc-950/80 border border-zinc-850 rounded-xl px-5 py-3.5 outline-none font-mono text-sm cursor-pointer hover:border-zinc-700 text-zinc-300"
-            >
-              <option value="ALL">All Actions</option>
-              <option value="BLOCK">Blocked Actions</option>
-              <option value="ALLOW">Allowed Actions</option>
-              <option value="WARNING">Warning Actions</option>
-            </select>
-          </div>
+            {/* Integrated Creative Prompt Executor */}
+            <PromptSimulator
+              prompt={prompt}
+              setPrompt={setPrompt}
+              sendPrompt={sendPrompt}
+              loading={loading}
+              setAttackPrompt={setAttackPrompt}
+              loadLogs={loadLogs}
+              loadRuntimeLogs={loadRuntimeLogs}
+            />
 
-          {/* Threat feed entries */}
-          <ThreatFeed filteredLogs={filteredLogs} />
-        </div>
-
-        {/* Runtime Executions & API Tool Monitors */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-850 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <RuntimeMonitor toolResult={toolResult} />
-          </div>
-          <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-850 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-            <RuntimeFeed toolLogs={toolLogs} />
-          </div>
-        </div>
-
-        {/* Advanced LangGraph Multi-Agent Orchestration Visualizer */}
-        <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 hover:border-zinc-700 transition-all duration-300 space-y-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/5 rounded-full blur-[80px] pointer-events-none" />
-
-          <div>
-            <span className="text-purple-400 font-semibold uppercase tracking-wider text-2xs font-mono block">
-              Execution Diagram
-            </span>
-            <h2 className="text-3xl font-extrabold text-white mt-1 tracking-tight flex items-center gap-2">
-              <span>🕸️</span>
-              <span>LangGraph Security Flow & Trace</span>
-            </h2>
-            <p className="text-zinc-500 text-xs mt-1 max-w-xl">
-              Reviews consensus nodes across inputs scanners, decision metrics classifiers, and tool validator middlewares.
-            </p>
-          </div>
-
-          {/* Glowing node layout maps */}
-          <PipelineVisualizer />
-
-          <div className="pt-6 border-t border-zinc-800/80 space-y-6">
-            <AgentTimeline trace={trace} />
-            <ReasoningChain reasoningChain={reasoningChain} />
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <WorkflowVisualization />
-              <AgentStatusPanel trace={trace} />
-            </div>
-
-            {/* Performance Gauges Row */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
-                <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Active Consensus Node count</span>
-                <span className="text-3xl font-black text-white mt-1 block">
-                  {Object.keys(agentMetrics).length || 3} Nodes
-                </span>
+            {/* Live Simulation Interception Response, Analysis & WebSocket Streams Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300 lg:col-span-1">
+                <ResponsePanel response={response} />
               </div>
-              <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
-                <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Interception Processing Speed</span>
-                <span className="text-3xl font-black text-cyan-400 mt-1 block">
-                  {avgTime === "0.00" ? "425.00" : avgTime} ms
-                </span>
+              <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300 lg:col-span-1">
+                <FirewallAnalysis firewallData={firewallData} />
               </div>
-              <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
-                <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Graph Consensus Precision</span>
-                <span className="text-3xl font-black text-emerald-400 mt-1 block">100% Secure</span>
+              <div className="lg:col-span-1">
+                <WebSocketTerminal wsLogs={wsLogs} isConnected={wsConnected} isStreaming={wsStreaming} />
               </div>
             </div>
 
-            <AgentMetrics agentMetrics={agentMetrics} />
-          </div>
-        </div>
+            {/* Historical Stats, Charts, Heatmaps Row */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="md:col-span-2 bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
+                <AnalyticsCards logs={logs} />
+              </div>
+              <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
+                <ThreatHeatmap threatStats={threatStats} />
+              </div>
+            </div>
 
-        {/* Bottom Level Activity logs timeline */}
-        <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
-          <ActivityTimeline logs={logs} />
-        </div>
-      </div>
-    </main>
+            {/* Data Log Search and Filtering */}
+            <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 hover:border-zinc-700 transition-all duration-300 space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h2 className="text-xl font-bold font-mono text-white flex items-center gap-2">
+                    <span>📋</span>
+                    <span>Active Threat Intelligence Stream</span>
+                  </h2>
+                  <p className="text-zinc-500 text-xs mt-1 font-mono">
+                    Browse, sort, and query historical agent threat reports.
+                  </p>
+                </div>
+                <ExportButton exportSecurityReport={exportSecurityReport} />
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4">
+                <input
+                  type="text"
+                  placeholder="Filter threats by prompt keyword or type..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="flex-1 bg-zinc-950/80 border border-zinc-850 rounded-xl px-5 py-3.5 outline-none font-mono text-sm focus:border-cyan-500/40 transition-all duration-200 text-zinc-300"
+                />
+
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="bg-zinc-950/80 border border-zinc-850 rounded-xl px-5 py-3.5 outline-none font-mono text-sm cursor-pointer hover:border-zinc-700 text-zinc-300"
+                >
+                  <option value="ALL">All Actions</option>
+                  <option value="BLOCK">Blocked Actions</option>
+                  <option value="ALLOW">Allowed Actions</option>
+                  <option value="WARNING">Warning Actions</option>
+                </select>
+              </div>
+
+              {/* Threat feed entries */}
+              <ThreatFeed filteredLogs={filteredLogs} />
+            </div>
+
+            {/* Runtime Executions & API Tool Monitors */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-850 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
+                <RuntimeMonitor toolResult={toolResult} />
+              </div>
+              <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-850 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
+                <RuntimeFeed toolLogs={toolLogs} />
+              </div>
+            </div>
+
+            {/* Advanced LangGraph Multi-Agent Orchestration Visualizer */}
+            <div className="bg-zinc-900/60 backdrop-blur-xl border border-zinc-800 rounded-3xl p-6 hover:border-zinc-700 transition-all duration-300 space-y-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-80 h-80 bg-purple-500/5 rounded-full blur-[80px] pointer-events-none" />
+
+              <div>
+                <span className="text-purple-400 font-semibold uppercase tracking-wider text-2xs font-mono block">
+                  Execution Diagram
+                </span>
+                <h2 className="text-3xl font-extrabold text-white mt-1 tracking-tight flex items-center gap-2">
+                  <span>🕸️</span>
+                  <span>LangGraph Security Flow & Trace</span>
+                </h2>
+                <p className="text-zinc-500 text-xs mt-1 max-w-xl">
+                  Reviews consensus nodes across inputs scanners, decision metrics classifiers, and tool validator middlewares.
+                </p>
+              </div>
+
+              {/* Glowing node layout maps */}
+              <PipelineVisualizer />
+
+              <div className="pt-6 border-t border-zinc-800/80 space-y-6">
+                <AgentTimeline trace={trace} />
+                <ReasoningChain reasoningChain={reasoningChain} />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <WorkflowVisualization />
+                  <AgentStatusPanel trace={trace} />
+                </div>
+
+                {/* Performance Gauges Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
+                    <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Active Consensus Node count</span>
+                    <span className="text-3xl font-black text-white mt-1 block">
+                      {Object.keys(agentMetrics).length || 3} Nodes
+                    </span>
+                  </div>
+                  <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
+                    <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Interception Processing Speed</span>
+                    <span className="text-3xl font-black text-cyan-400 mt-1 block">
+                      {avgTime === "0.00" ? "425.00" : avgTime} ms
+                    </span>
+                  </div>
+                  <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
+                    <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Graph Consensus Precision</span>
+                    <span className="text-3xl font-black text-emerald-400 mt-1 block">100% Secure</span>
+                  </div>
+                </div>
+
+                <AgentMetrics agentMetrics={agentMetrics} />
+              </div>
+            </div>
+
+            {/* Bottom Level Activity logs timeline */}
+            <div className="bg-zinc-900/40 backdrop-blur-xl border border-zinc-800 rounded-3xl p-1 hover:border-zinc-700 transition-all duration-300">
+              <ActivityTimeline logs={logs} />
+            </div>
+          </div>
+        </main>
+      )}
+    </>
   );
 }

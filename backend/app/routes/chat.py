@@ -135,7 +135,6 @@ def chat(request: PromptRequest):
         # =================================================
 
         if requested_tool:
-
             save_runtime_log(
                 requested_tool,
                 "BLOCKED",
