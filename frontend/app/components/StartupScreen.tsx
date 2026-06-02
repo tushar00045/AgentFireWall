@@ -1,15 +1,14 @@
-import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, Variants,AnimatePresence } from "framer-motion";
 
 export default function StartupScreen() {
   // Simple animated logo that fades in and out
-  const container = {
+  const container:Variants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { duration: 1 } },
     exit: { opacity: 0, transition: { duration: 0.8 } },
   };
 
-  const logo = {
+  const logo:Variants = {
     hidden: { scale: 0.5, rotate: -30, opacity: 0 },
     visible: { scale: 1, rotate: 0, opacity: 1, transition: { type: "spring", stiffness: 260, damping: 20 } },
     exit: { scale: 0.5, rotate: 30, opacity: 0, transition: { duration: 0.8 } },
