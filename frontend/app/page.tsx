@@ -193,7 +193,9 @@ export default function Home() {
       return;
     }
     try {
-      const res = await fetch("http://127.0.0.1:8000/security-logs");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/security-logs`,
+      );
       const data = await res.json();
       const formattedLogs = data.logs.map((log: any) => ({
         timestamp: new Date(log.timestamp).toLocaleString(),
@@ -214,7 +216,9 @@ export default function Home() {
       return;
     }
     try {
-      const res = await fetch("http://127.0.0.1:8000/runtime-logs");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/runtime-logs`,
+      );
       const data = await res.json();
       const formattedLogs = data.logs.map((log: any) => ({
         timestamp: new Date(log.timestamp).toLocaleString(),
@@ -380,7 +384,7 @@ export default function Home() {
     }
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/chat", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
