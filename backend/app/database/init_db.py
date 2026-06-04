@@ -16,7 +16,7 @@ def initialize_database():
             risk_score INTEGER,
             threat_type TEXT,
             reason TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
         )
 
     """)
@@ -31,7 +31,7 @@ def initialize_database():
             tool_name TEXT,
             status TEXT,
             message TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            timestamp DATETIME DEFAULT (datetime('now', '+5 hours', '+30 minutes'))
         )
     """)
 

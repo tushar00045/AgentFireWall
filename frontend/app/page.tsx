@@ -97,7 +97,10 @@ export default function Home() {
 
   async function detectBackend() {
     try {
-      const res = await fetch("http://127.0.0.1:8000/security-logs");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/security-logs`,
+      );
+      console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
       if (res.ok) {
         setIsOffline(false);
         console.log(" Live AgentFireWall database active.");
@@ -198,7 +201,10 @@ export default function Home() {
       );
       const data = await res.json();
       const formattedLogs = data.logs.map((log: any) => ({
-        timestamp: new Date(log.timestamp).toLocaleString(),
+        timestamp: new Date(log.timestamp).toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          hour12: false,
+        }),
         prompt: log.prompt,
         decision: log.decision,
         risk_score: log.risk_score,
@@ -389,7 +395,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-
+      console.log("API URL:", process.env.NEXT_PUBLIC_API_URL);
       const data = await res.json();
       setFirewallData(data.firewall);
       setToolResult(data.tool_result);
@@ -648,13 +654,13 @@ export default function Home() {
                   <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
                     <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Active Consensus Node count</span>
                     <span className="text-3xl font-black text-white mt-1 block">
-                      {Object.keys(agentMetrics).length || 3} Nodes
+                      {Object.keys(agentMetrics).length || 4} Nodes
                     </span>
                   </div>
                   <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">
                     <span className="text-zinc-500 text-3xs uppercase tracking-wider font-extrabold block">Interception Processing Speed</span>
                     <span className="text-3xl font-black text-cyan-400 mt-1 block">
-                      {avgTime === "0.00" ? "425.00" : avgTime} ms
+                      {avgTime === "0.00" ? "0.00" : avgTime} ms
                     </span>
                   </div>
                   <div className="bg-zinc-950/60 border border-zinc-850 rounded-2xl p-4.5 font-mono">

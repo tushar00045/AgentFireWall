@@ -216,7 +216,7 @@ export default function PromptSimulator({
             <button
               onClick={async () => {
                 try {
-                  await fetch("http://127.0.0.1:8000/clear-logs", { method: "DELETE" });
+                  await fetch(`${process.env.NEXT_PUBLIC_API_URL}/clear-logs`, { method: "DELETE" });
                   await loadLogs();
                   await loadRuntimeLogs();
                 } catch (e) {

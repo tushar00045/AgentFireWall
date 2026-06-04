@@ -73,6 +73,50 @@ def chat(request: PromptRequest):
     }
     
     # =====================================================
+    # TOOL DETECTION
+    # =====================================================
+
+    requested_tool = None
+
+    prompt_lower = request.prompt.lower()
+
+    if "weather" in prompt_lower:
+        requested_tool = "get_weather"
+
+    elif "delete database" in prompt_lower:
+        requested_tool = "delete_database"
+
+    elif "read secrets" in prompt_lower:
+        requested_tool = "read_secrets"
+
+    elif "export customer data" in prompt_lower:
+        requested_tool = "export_customer_data"
+
+    elif "send email" in prompt_lower:
+        requested_tool = "send_email"
+    
+   # =====================================================
+# TOOL RISK ANALYSIS
+# =====================================================
+
+    if requested_tool in [
+        "read_secrets",
+        "delete_database",
+        "export_customer_data"
+    ]:
+
+        firewall_result["decision"] = "BLOCK"
+        firewall_result["risk_score"] = 95
+
+        firewall_result["llm_analysis"]["threat_type"] = "Tool Hijacking"
+
+        firewall_result["llm_analysis"]["reason"] = (
+            f"Restricted tool access detected: {requested_tool}"
+        )
+
+        firewall_result["threats"] = ["Tool Hijacking"]
+    
+    # =====================================================
     # SAVE SECURITY LOG
     # =====================================================
 
@@ -99,28 +143,37 @@ def chat(request: PromptRequest):
 
     print("========================================\n")
 
-    # =====================================================
-    # TOOL DETECTION
-    # =====================================================
 
-    requested_tool = None
+        
+# =====================================================
+# BLOCK HIGH-RISK TOOLS BEFORE AI EXECUTION
+# =====================================================
 
-    prompt_lower = request.prompt.lower()
+    if requested_tool in [
+        "read_secrets",
+        "delete_database",
+        "export_customer_data"
+    ]:
 
-    if "weather" in prompt_lower:
-        requested_tool = "get_weather"
+        save_runtime_log(
+            requested_tool,
+            "BLOCKED",
+            "Blocked by Runtime Governance before AI execution"
+        )
 
-    elif "delete database" in prompt_lower:
-        requested_tool = "delete_database"
+        firewall_result["decision"] = "BLOCK"
+        firewall_result["risk_score"] = 95
 
-    elif "read secrets" in prompt_lower:
-        requested_tool = "read_secrets"
-
-    elif "export customer data" in prompt_lower:
-        requested_tool = "export_customer_data"
-
-    elif "send email" in prompt_lower:
-        requested_tool = "send_email"
+        return {
+            "blocked": True,
+            "message": "Prompt blocked by Agent Firewall",
+            "firewall": firewall_result,
+            "tool_result": {
+                "tool": requested_tool,
+                "status": "BLOCKED",
+                "message": "Blocked by Runtime Governance before AI execution"
+            }
+        }
 
     # =====================================================
     # BLOCK MALICIOUS PROMPTS

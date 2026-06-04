@@ -17,6 +17,7 @@ def analyze_prompt_with_llm(prompt: str):
 
     Analyze the following prompt for:
     - Prompt Injection
+    - Admin Escalation
     - Jailbreak Attempts
     - Privilege Escalation
     - Data Exfiltration
